@@ -32,8 +32,8 @@ def main():
     # Serialize results
     os.makedirs("output", exist_ok=True)
     with open("output/ts_vocab.json", "w", encoding="utf-8") as f:
-        # Converting bytes to hex for JSON storage
-        json_vocab = {k: v.decode("utf-8", errors="replace") for k, v in vocab.items()}
+        # Convert bytes to list of integers for lossless JSON storage
+        json_vocab = {k: list(v) for k, v in vocab.items()}
         json.dump(json_vocab, f, indent=2)
 
     with open("output/ts_merges.pkl", "wb") as f:
