@@ -1,12 +1,11 @@
 from __future__ import annotations
-
-import os
 from collections.abc import Iterable
-from typing import IO, Any, BinaryIO
+import os
+from typing import Any, BinaryIO, IO
 
+from jaxtyping import Bool, Float, Int
 import numpy.typing as npt
 import torch
-from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
 
@@ -589,4 +588,6 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    from train_bpe import train_bpe
+
+    return train_bpe(str(input_path), vocab_size, special_tokens)
