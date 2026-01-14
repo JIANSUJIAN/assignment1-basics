@@ -1,11 +1,12 @@
-from typing import TypeVar
-import numpy as np
-import pytest
 import os
 from pathlib import Path
+import pickle
+from typing import TypeVar
+
+import numpy as np
+import pytest
 import torch
 from torch import Tensor
-import pickle
 
 
 class DEFAULT:
