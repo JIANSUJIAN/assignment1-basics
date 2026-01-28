@@ -86,37 +86,42 @@ class RotaryPositionalEmbedding(nn.Module):
         super().__init__()
         self.d_k = d_k
 
-        # Precompute frequencies: theta_k = theta^(-2(k-1)/d_k) for k in
-        # 1...d_k/2
-        powers = torch.arange(0, d_k, 2, device=device).double() / d_k
+        # Precompute frequencies: theta_k = theta^(-2(k-1)/d_k) for k in 1...d_k/2
+        # We compute in float64 for numerical precision, then convert to float32.
+        # Always compute on CPU for device compatibility (MPS doesn't support float64,
+        # and this is only done once during init so there's no performance impact).
+        # The buffers will be moved to the target device via model.to(device).
+        powers = torch.arange(0, d_k, 2, dtype=torch.float64) / d_k
         freqs = 1.0 / (theta**powers)  # Shape: (d_k/2, )
 
-        # Precompute angles for all positions in double precision
+        # Precompute angles for all positions
         # t: (max_seq_len, ), freqs: (d_k/2, ) -> angles: (max_seq_len, d_k/2)
-        t = torch.arange(max_seq_len, device=device).double()
+        t = torch.arange(max_seq_len, dtype=torch.float64)
         angles = einsum(t, freqs, "t, f -> t f")  # Outer product
 
+        # Convert to float32 and register as buffers
         self.register_buffer("cos", torch.cos(angles).float(), persistent=False)
         self.register_buffer("sin", torch.sin(angles).float(), persistent=False)
 
     def forward(self, x, token_positions):
-        # x shape: (..., seq_len, d_k)
-        # token_positions shape: (..., seq_len)
+        # x shape: (batch, num_heads, seq_len, head_dim) from multi-head attention
+        # token_positions shape: (batch, seq_len)
 
-        # Since self.cos is indexed on its first dimension, this lookup returns
-        # a vector of shape (d_k/2, )
-        # Output shape: (..., seq_len, d_k/2)
-        batch_cos = self.cos[token_positions]
-        batch_sin = self.sin[token_positions]
+        # Lookup cos/sin for the given positions
+        # self.cos: (max_seq_len, head_dim/2), token_positions: (batch, seq_len)
+        # Result: (batch, seq_len, head_dim/2) -> unsqueeze to (batch, 1, seq_len, head_dim/2)
+        # The unsqueeze(1) adds a dimension for num_heads to broadcast correctly
+        batch_cos = self.cos[token_positions].unsqueeze(1)
+        batch_sin = self.sin[token_positions].unsqueeze(1)
 
-        # Split d_k into pairs (f=d_k/2, c=2) for rotation.
+        # Split head_dim into pairs (f=head_dim/2, c=2) for rotation.
+        # x: (batch, heads, seq_len, head_dim) -> (batch, heads, seq_len, head_dim/2, 2)
         x_pairs = rearrange(x, "... s (f c) -> ... s f c", c=2)
-        x_even = x_pairs[..., 0]  # x_{2k-1}
-        x_odd = x_pairs[..., 1]  # x_{2k}
+        x_even = x_pairs[..., 0]  # x_{2k-1}, shape: (batch, heads, seq_len, head_dim/2)
+        x_odd = x_pairs[..., 1]  # x_{2k}, shape: (batch, heads, seq_len, head_dim/2)
 
         # Apply the pair-wise rotation
-        # x_even' = x_even * cos - x_odd * sin
-        # x_odd' = x_even * sin - x_odd * cos
+        # batch_cos/sin broadcast from (batch, 1, seq_len, head_dim/2) to match x_even/x_odd
         x_even_new = (x_even * batch_cos) - (x_odd * batch_sin)
         x_odd_new = (x_even * batch_sin) + (x_odd * batch_cos)
 
