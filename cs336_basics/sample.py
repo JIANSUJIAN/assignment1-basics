@@ -31,16 +31,19 @@ def sample():
     config = load_config(config_path)
     print(f"Loaded config: {config}")
 
+    # Handle nested config structure (model params may be under "model" key)
+    model_config = config.get("model", config)
+
     tokenizer = Tokenizer.from_files(args.vocab_path, args.merges_path, special_tokens=["<|endoftext|>"])
 
     model = TransformerLM(
-        vocab_size=config["vocab_size"],
-        max_seq_len=config["max_seq_len"],
-        d_model=config["d_model"],
-        num_layers=config["num_layers"],
-        num_heads=config["num_heads"],
-        d_ff=config["d_ff"],
-        rope_theta=config["rope_theta"],
+        vocab_size=model_config["vocab_size"],
+        max_seq_len=model_config["max_seq_len"],
+        d_model=model_config["d_model"],
+        num_layers=model_config["num_layers"],
+        num_heads=model_config["num_heads"],
+        d_ff=model_config["d_ff"],
+        rope_theta=model_config["rope_theta"],
         device=args.device,
     )
     model.to(args.device)
